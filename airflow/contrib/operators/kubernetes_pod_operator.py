@@ -50,6 +50,8 @@ class KubernetesPodOperator(BaseOperator):
     :type volume_mounts: list[airflow.contrib.kubernetes.volume_mount.VolumeMount]
     :param volumes: volumes for launched pod. Includes ConfigMaps and PersistentVolumes
     :type volumes: list[airflow.contrib.kubernetes.volume.Volume]
+    :param init_containers: init containers for launched pod.
+    :type init_containers: list[airflow.contrib.kubernetes.init_container.InitContainer]
     :param labels: labels to apply to the Pod
     :type labels: dict
     :param startup_timeout_seconds: timeout in seconds to startup the pod
@@ -100,44 +102,51 @@ class KubernetesPodOperator(BaseOperator):
     """
     template_fields = ('cmds', 'arguments', 'env_vars', 'config_file')
 
+    def _create_pod(self, gen):
+        for port in self.ports:
+            gen.add_port(port)
+        for mount in self.volume_mounts:
+            gen.add_mount(mount)
+        for volume in self.volumes:
+            gen.add_volume(volume)
+        for init_container in self.init_containers:
+            gen.add_init_container(init_container)
+
+        pod = gen.make_pod(
+            namespace=self.namespace,
+            image=self.image,
+            pod_id=self.name,
+            cmds=self.cmds,
+            arguments=self.arguments,
+            labels=self.labels,
+        )
+
+        pod.service_account_name = self.service_account_name
+        pod.secrets = self.secrets
+        pod.envs = self.env_vars
+        pod.image_pull_policy = self.image_pull_policy
+        pod.image_pull_secrets = self.image_pull_secrets
+        pod.annotations = self.annotations
+        pod.resources = self.resources
+        pod.affinity = self.affinity
+        pod.node_selectors = self.node_selectors
+        pod.hostnetwork = self.hostnetwork
+        pod.tolerations = self.tolerations
+        pod.configmaps = self.configmaps
+        pod.security_context = self.security_context
+        pod.pod_runtime_info_envs = self.pod_runtime_info_envs
+        pod.dnspolicy = self.dnspolicy
+        return pod
+
     def execute(self, context):
         try:
             client = kube_client.get_kube_client(in_cluster=self.in_cluster,
-                                                 cluster_context=self.cluster_context,
-                                                 config_file=self.config_file)
+                                    cluster_context=self.cluster_context,
+                                    config_file=self.config_file)
+
             gen = pod_generator.PodGenerator()
 
-            for port in self.ports:
-                gen.add_port(port)
-            for mount in self.volume_mounts:
-                gen.add_mount(mount)
-            for volume in self.volumes:
-                gen.add_volume(volume)
-
-            pod = gen.make_pod(
-                namespace=self.namespace,
-                image=self.image,
-                pod_id=self.name,
-                cmds=self.cmds,
-                arguments=self.arguments,
-                labels=self.labels,
-            )
-
-            pod.service_account_name = self.service_account_name
-            pod.secrets = self.secrets
-            pod.envs = self.env_vars
-            pod.image_pull_policy = self.image_pull_policy
-            pod.image_pull_secrets = self.image_pull_secrets
-            pod.annotations = self.annotations
-            pod.resources = self.resources
-            pod.affinity = self.affinity
-            pod.node_selectors = self.node_selectors
-            pod.hostnetwork = self.hostnetwork
-            pod.tolerations = self.tolerations
-            pod.configmaps = self.configmaps
-            pod.security_context = self.security_context
-            pod.pod_runtime_info_envs = self.pod_runtime_info_envs
-            pod.dnspolicy = self.dnspolicy
+            pod = self._create_pod(gen)
 
             launcher = pod_launcher.PodLauncher(kube_client=client,
                                                 extract_xcom=self.xcom_push)
@@ -176,6 +185,7 @@ class KubernetesPodOperator(BaseOperator):
                  ports=None,
                  volume_mounts=None,
                  volumes=None,
+                 init_containers=None,
                  env_vars=None,
                  secrets=None,
                  in_cluster=False,
@@ -213,6 +223,7 @@ class KubernetesPodOperator(BaseOperator):
         self.ports = ports or []
         self.volume_mounts = volume_mounts or []
         self.volumes = volumes or []
+        self.init_containers = init_containers or []
         self.secrets = secrets or []
         self.in_cluster = in_cluster
         self.cluster_context = cluster_context

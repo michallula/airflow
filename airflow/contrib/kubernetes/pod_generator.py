@@ -18,6 +18,8 @@
 from airflow.contrib.kubernetes.pod import Pod, Port
 from airflow.contrib.kubernetes.volume import Volume
 from airflow.contrib.kubernetes.volume_mount import VolumeMount
+from airflow.contrib.kubernetes.init_container import InitContainer
+
 import uuid
 
 
@@ -31,7 +33,24 @@ class PodGenerator:
         self.volume_mounts = []
         self.init_containers = []
 
-    def add_init_container(self,
+    def add_init_container(self, init_container: InitContainer):
+        """
+
+        Adds an init container to the launched pod. useful for pre-
+
+        :param: init_container: init container definition
+        :type: init_container: airflow.kubernetes.init_container.InitContainer
+
+        """
+        self._add_init_container(
+            name=init_container.name,
+            image=init_container.image,
+            security_context=init_container.security_context,
+            init_environment=init_container.init_environment,
+            volume_mounts=init_container.volume_mounts
+        )
+
+    def _add_init_container(self,
                            name,
                            image,
                            security_context,
